@@ -1,4 +1,4 @@
-package rl
+package main
 
 import (
 	"sync"
@@ -20,12 +20,13 @@ func New(store Store, requestWindow time.Duration, maxRequests int) *RateLimiter
 }
 
 func (r *RateLimiter) IsAllowed(ip string) bool {
-	entry, ok := r.store.GetClientData(ip)
-	if !ok || entry.WindowExpiresAt.Before(time.Now()) {
+	count, ok := r.store.ClientCount(ip)
+	if !ok {
 		r.store.InitClientData(ip, r.requestWindow)
+		return true
 	}
 
-	if entry.Count < r.maxRequests {
+	if count < r.maxRequests {
 		r.store.Increment(ip)
 		return true
 	}

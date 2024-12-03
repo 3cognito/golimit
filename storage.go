@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
-// errors
 var (
 	ErrClientDataNotFound = errors.New("client data not found")
 )
@@ -22,7 +22,7 @@ type ClientData struct {
 
 type Store interface {
 	Increment(ip string)
-	GetClientData(ip string) (ClientData, bool)
+	ClientCount(ip string) (int, bool)
 	InitClientData(ip string, windowDuration time.Duration)
 }
 
@@ -43,7 +43,7 @@ type RedisStore struct {
 }
 
 func NewRedisStore(addr string) *RedisStore {
-	opt, _ := redis.ParseURL("rediss://default:AVDFAAIjcDFkZjllNzQxY2NlNmY0MjAzODJmOWUxNDZlNjI4YmQyOHAxMA@guiding-emu-20677.upstash.io:6379")
+	opt, _ := redis.ParseURL(addr)
 	client := redis.NewClient(opt)
 
 	return &RedisStore{
@@ -53,23 +53,33 @@ func NewRedisStore(addr string) *RedisStore {
 }
 
 func (r *RedisStore) Increment(ip string) {
-
+	r.client.Incr(r.ctx, ip)
 }
 
-func (r *RedisStore) InitClientData(ip string, count int, windowDuration time.Duration) {
-
+func (r *RedisStore) InitClientData(ip string, windowDuration time.Duration) {
+	r.client.Set(r.ctx, ip, 1, windowDuration)
 }
 
-func (r *RedisStore) GetClientData(ip string) (ClientData, bool) {
-	return ClientData{}, false
+func (r *RedisStore) ClientCount(ip string) (int, bool) {
+	val, err := r.client.Get(r.ctx, ip).Result()
+	if err == redis.Nil {
+		return 0, false
+	}
+
+	count, _ := strconv.Atoi(val)
+	return count, true
 }
 
-func (i *InMemoryStore) GetClientData(ip string) (ClientData, bool) {
+func (i *InMemoryStore) ClientCount(ip string) (int, bool) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	data, ok := i.data[ip]
-	return data, ok
+	if !ok || data.WindowExpiresAt.Before(time.Now()) {
+		return 0, false
+	}
+
+	return data.Count, true
 }
 
 func (i *InMemoryStore) Increment(ip string) {
