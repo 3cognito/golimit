@@ -6,36 +6,27 @@ import (
 )
 
 type RateLimiter struct {
-	mu            sync.Mutex
-	clientData    map[string]*ClientData
+	store         Store
 	requestWindow time.Duration
 	maxRequests   int
 }
 
-type ClientData struct {
-	Ip             string
-	Count          int
-	LastAccessTime time.Time
-}
-
-func New(requestWindow time.Duration, maxRequests int) *RateLimiter {
+func New(store Store, requestWindow time.Duration, maxRequests int) *RateLimiter {
 	return &RateLimiter{
-		clientData:    make(map[string]*ClientData),
+		store:         store,
 		requestWindow: requestWindow,
 		maxRequests:   maxRequests,
 	}
 }
 
 func (r *RateLimiter) IsAllowed(ip string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	entry, ok := r.store.GetClientData(ip)
+	if !ok || entry.WindowExpiresAt.Before(time.Now()) {
+		r.store.InitClientData(ip, r.requestWindow)
+	}
 
-	entry, ok := r.clientData[ip]
-	if !ok || time.Since(entry.LastAccessTime) > r.requestWindow {
-		r.clientData[ip].LastAccessTime = time.Now()
-		r.clientData[ip].Count = 1
-		return true
-	} else if entry.Count <= r.maxRequests {
+	if entry.Count < r.maxRequests {
+		r.store.Increment(ip)
 		return true
 	}
 
