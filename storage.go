@@ -2,16 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-)
-
-var (
-	ErrClientDataNotFound = errors.New("client data not found")
 )
 
 type ClientData struct {
